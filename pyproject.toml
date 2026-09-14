@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+# 说明：项目可以"开箱即用地克隆即用"（python main.py），
+# 这里的元数据只是方便 pip install -e . / 打包发布 / 静态检查工具读取配置。
+[project]
+name = "cloudops-bot"
+version = "1.0.0"
+description = "基于即时通讯机器人的多云自动化运维系统（ChatOps for multi-cloud operations）"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "CloudOps Bot contributors" }]
+keywords = ["chatops", "devops", "telegram-bot", "cloud", "aws", "digitalocean", "automation"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Systems Administration",
+]
+dependencies = [
+    "requests>=2.31,<3",
+    "aiohttp>=3.9,<4",
+    "cryptography>=41,<52",
+]
+
+[project.optional-dependencies]
+dev = ["ruff>=0.6", "mypy>=1.10"]
+
+[project.urls]
+Homepage = "https://github.com/bbemby/cloudops-bot"
+Documentation = "https://github.com/bbemby/cloudops-bot/blob/main/docs/DEPLOYMENT.md"
+Issues = "https://github.com/bbemby/cloudops-bot/issues"
+
+[project.scripts]
+cloudops-bot = "cloudops.cli:main"
+
+[tool.setuptools]
+packages = ["cloudops", "cloudops.bot", "cloudops.cloud", "cloudops.commands"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+exclude = [".venv", "data"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = [
+    "E501",   # 文案较长的提示语不强制折行
+    "B008",   # 允许在默认值里调用函数
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E402"]   # 测试需要先改 sys.path 再导入项目模块

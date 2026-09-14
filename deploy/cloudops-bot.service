@@ -1,0 +1,34 @@
+[Unit]
+Description=CloudOps Bot - 基于即时通讯机器人的多云自动化运维系统
+Documentation=https://github.com/bbemby/cloudops-bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# 按实际部署路径修改
+WorkingDirectory=/opt/cloudops-bot
+EnvironmentFile=/opt/cloudops-bot/.env
+ExecStart=/opt/cloudops-bot/.venv/bin/python /opt/cloudops-bot/main.py
+Restart=on-failure
+RestartSec=10
+
+# 普通用户运行（建议 useradd -r -s /usr/sbin/nologin cloudops）
+User=cloudops
+Group=cloudops
+
+# --- 加固：机器人只该写自己的数据目录 ---
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/cloudops-bot/data /opt/cloudops-bot/logs
+# 允许出网（Telegram 与云厂商 API）
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cloudops-bot
+
+[Install]
+WantedBy=multi-user.target

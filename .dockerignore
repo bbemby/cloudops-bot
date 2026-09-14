@@ -1,0 +1,27 @@
+# 构建上下文瘦身：密钥、运行数据、缓存统统不进镜像
+.env
+.env.*
+!.env.example
+data/
+*.db
+*.db-journal
+*.db-wal
+*.log
+logs/
+.git/
+.gitignore
+.github/
+tests/
+__pycache__/
+*/__pycache__/
+*.py[cod]
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+docs/
+*.md
+!README.md

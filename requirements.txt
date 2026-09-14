@@ -1,0 +1,16 @@
+﻿# CloudOps Bot 运行依赖（Python >= 3.11）
+#
+#   python -m venv .venv && . .venv/bin/activate
+#   pip install -r requirements.txt
+#
+# 只用到三个第三方库：HTTP 客户端（云厂商 API / Telegram 长轮询）
+# 与凭证加密所需的 cryptography。
+
+# 云厂商 REST API（DigitalOcean、AWS 查询接口、SSM 参数查询）
+requests>=2.31,<3
+
+# Telegram Bot API 长轮询（异步）
+aiohttp>=3.9,<4
+
+# 落库凭证的对称加密（Fernet / HKDF）
+cryptography>=41,<52

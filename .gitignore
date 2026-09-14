@@ -1,0 +1,44 @@
+# ---- 密钥与本地配置：绝对不能进仓库 ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ---- 运行时状态 ----
+data/
+*.db
+*.db-journal
+*.db-wal
+*.sqlite3
+mock-cloud.json
+*.log
+logs/
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+env/
+.eggs/
+.python-version
+
+# ---- 测试与工具缓存 ----
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# ---- 编辑器 / 系统 ----
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db

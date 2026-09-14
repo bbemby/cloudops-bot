@@ -1,0 +1,35 @@
+# -----------------------------------------------------------------------------
+# docker compose up -d --build
+#
+# 前置：
+#   cp .env.example .env && python manage.py gen-secret   # 填好 Token 与管理员 ID
+#
+# 注意事项：
+#   * 同一个 Bot Token 只允许一个消费者，因此这里不设 replicas；
+#   * data/ 目录以卷的方式挂出来，删除容器不会丢数据库；
+#   * 需要读 .env 里的密钥，因此 .env 不要提交进 Git（.gitignore 已覆盖）。
+# -----------------------------------------------------------------------------
+services:
+  cloudops-bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: cloudops-bot:latest
+    container_name: cloudops-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # 容器内固定路径，避免依赖 .env 里的相对路径
+      DATABASE_PATH: /app/data/cloudops.db
+      MOCK_STATE_PATH: /app/data/mock-cloud.json
+    volumes:
+      - ./data:/app/data
+    # 只需要出网访问 Telegram 与云厂商 API，不需要对外暴露端口
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
