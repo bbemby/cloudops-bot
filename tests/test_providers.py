@@ -12,8 +12,10 @@ import unittest
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from support import ROOT  # noqa: F401
-from support import make_settings
+from support import (
+    ROOT,  # noqa: F401
+    make_settings,
+)
 
 from cloudops.cloud import (
     AwsEc2Provider,
@@ -169,36 +171,33 @@ class RegistryTest(unittest.TestCase):
             create_provider("aliyun", {}, None)
 
     def test_register_rejects_name_conflict_and_missing_name(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            settings = make_settings(Path(tmp))
+        class Conflict(CloudProvider):
+            name = "digitalocean"
+            display_name = "conflict"
 
-            class Conflict(CloudProvider):
-                name = "digitalocean"
-                display_name = "conflict"
+            def validate_credentials(self):  # pragma: no cover
+                return ""
 
-                def validate_credentials(self):  # pragma: no cover
-                    return ""
+            def list_instances(self):  # pragma: no cover
+                return []
 
-                def list_instances(self):  # pragma: no cover
-                    return []
+            def create_instance(self, spec):  # pragma: no cover
+                raise NotImplementedError
 
-                def create_instance(self, spec):  # pragma: no cover
-                    raise NotImplementedError
+            def destroy_instance(self, instance_id):  # pragma: no cover
+                raise NotImplementedError
 
-                def destroy_instance(self, instance_id):  # pragma: no cover
-                    raise NotImplementedError
+            def get_instance(self, instance_id):  # pragma: no cover
+                raise NotImplementedError
 
-                def get_instance(self, instance_id):  # pragma: no cover
-                    raise NotImplementedError
+        with self.assertRaises(ValueError):
+            register_provider(Conflict)
 
-            with self.assertRaises(ValueError):
-                register_provider(Conflict)
+        class NoName(Conflict):
+            name = ""
 
-            class NoName(Conflict):
-                name = ""
-
-            with self.assertRaises(ValueError):
-                register_provider(NoName)
+        with self.assertRaises(ValueError):
+            register_provider(NoName)
 
     def test_available_provider_names_hides_mock_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

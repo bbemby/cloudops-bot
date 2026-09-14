@@ -11,21 +11,16 @@ from . import __version__
 from .bot import (
     ConfirmationStore,
     Dispatcher,
-    GROUP_CRED,
-    GROUP_OTHER,
-    GROUP_READ,
-    GROUP_WRITE,
     JobRunner,
     TelegramClient,
     TelegramError,
 )
-from .cloud import available_provider_names, create_provider, registry
+from .cloud import available_provider_names, create_provider
 from .commands import register_all
 from .config import Settings
 from .credentials import CredentialStore
 from .crypto import SecretBox
 from .db import Database
-from .errors import CloudOpsError, ConfigError
 from .i18n import get_translator
 from .logging_setup import setup_logging
 
@@ -192,7 +187,7 @@ class Application:
     async def _sleep(self, seconds: float) -> None:
         try:
             await asyncio.wait_for(self._stopping.wait(), timeout=seconds)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pass
 
     def _install_signal_handlers(self) -> None:

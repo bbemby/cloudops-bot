@@ -81,7 +81,7 @@ def check(settings: Settings) -> int:
 
     database = Database(settings.database_path)
     database.initialize()
-    print("\n✓ 配置完整，数据库已就绪（表：%s）" % ", ".join(database.tables()))
+    print(f"\n✓ 配置完整，数据库已就绪（表：{', '.join(database.tables())}）")
     print("  下一步：python main.py")
     return 0
 

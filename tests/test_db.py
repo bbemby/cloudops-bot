@@ -9,6 +9,7 @@ from pathlib import Path
 from support import ROOT  # noqa: F401
 
 from cloudops.db import Database, DuplicateCredential
+from cloudops.errors import NotFound
 from cloudops.models import (
     LOG_DENIED,
     LOG_SUCCESS,
@@ -108,8 +109,8 @@ class DatabaseTest(unittest.TestCase):
         self.db.set_active_credential(third.id, owner_id=111)
         self.assertTrue(self.db.get_credential(third.id).is_active)
         self.assertFalse(self.db.get_credential(mine.id).is_active)
-        # 跨用户激活会被拒绝
-        with self.assertRaises(Exception):
+        # 跨用户激活会被拒绝（不能把别人的凭证设成自己的当前工作区）
+        with self.assertRaises(NotFound):
             self.db.set_active_credential(third.id, owner_id=222)
 
     def test_delete_credential(self) -> None:

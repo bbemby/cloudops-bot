@@ -60,7 +60,7 @@ class JobRunner:
         logger.info("等待 %d 个后台任务收尾（最多 %.0fs）…", len(pending), timeout)
         try:
             await asyncio.wait_for(asyncio.gather(*pending, return_exceptions=True), timeout=timeout)
-        except asyncio.TimeoutError:  # pragma: no cover
+        except TimeoutError:  # pragma: no cover
             logger.warning("后台任务未在 %.0fs 内结束，强制取消", timeout)
             for task in pending:
                 task.cancel()

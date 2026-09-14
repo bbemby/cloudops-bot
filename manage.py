@@ -16,9 +16,7 @@
 from __future__ import annotations
 
 import argparse
-import os
 import sys
-from pathlib import Path
 from typing import List, Optional
 
 from cloudops import __homepage__, __project__, __version__
@@ -45,7 +43,7 @@ def cmd_gen_secret(_args, _settings: Optional[Settings] = None) -> int:
 
 def cmd_doctor(args, settings: Settings) -> int:
     """逐项体检，尽量把问题定位到"下一步该做什么"。"""
-    from cloudops.cloud import available_provider_names, create_provider
+    from cloudops.cloud import available_provider_names
 
     print(f"● 版本      : {__project__} {__version__} ({__homepage__})")
     print(f"● Python    : {sys.version.split()[0]}")

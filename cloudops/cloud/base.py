@@ -219,7 +219,8 @@ class CloudProvider(ABC):
         return f"<{type(self).__name__} label={self.label}>"
 
     def close(self) -> None:
-        """释放底层连接（子类按需覆写）。"""
+        """释放底层连接（子类按需覆写；本层默认没有可关闭的资源）。"""
+        return None
 
     def __enter__(self) -> "CloudProvider":
         return self

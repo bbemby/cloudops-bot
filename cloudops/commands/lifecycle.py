@@ -12,9 +12,9 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
-from ..bot import Context, GROUP_READ, GROUP_WRITE, confirm_keyboard
+from ..bot import GROUP_READ, GROUP_WRITE, Context, confirm_keyboard
 from ..bot.formatter import (
     format_created_instance,
     format_log_row,
@@ -22,8 +22,8 @@ from ..bot.formatter import (
 )
 from ..bot.telegram import TelegramClient
 from ..cloud import CreateSpec, available_provider_names, canonical_name, is_known
-from ..credentials import CredentialStore
 from ..commands.common import display_provider_name, obtain_provider, safe_lookup
+from ..credentials import CredentialStore
 from ..db import Database
 from ..errors import (
     CloudOpsError,

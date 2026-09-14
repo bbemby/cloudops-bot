@@ -6,8 +6,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from support import ROOT  # noqa: F401
-from support import make_settings
+from support import (
+    ROOT,  # noqa: F401
+    make_settings,
+)
 
 from cloudops.cloud.mock import MockProvider
 from cloudops.credentials import CredentialStore

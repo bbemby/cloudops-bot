@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from .confirm import ConfirmationStore, PendingAction
 from .dispatcher import (
-    CommandSpec,
-    Context,
-    Dispatcher,
     GROUP_CRED,
     GROUP_OTHER,
     GROUP_READ,
     GROUP_WRITE,
+    CommandSpec,
+    Context,
+    Dispatcher,
     confirm_keyboard,
 )
 from .jobs import JobRunner

@@ -24,10 +24,10 @@ from typing import Any, Dict, Iterator, List, Optional, Sequence
 
 from .errors import CloudError, CloudOpsError, NotFound
 from .models import (
+    ROLE_GUEST,
     AccountStats,
     Credential,
     OperationLog,
-    ROLE_GUEST,
     TaskRecord,
     User,
 )

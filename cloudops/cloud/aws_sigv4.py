@@ -17,7 +17,7 @@ import hashlib
 import hmac
 import urllib.parse
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Dict, Mapping, Optional, Tuple
 
 ALGORITHM = "AWS4-HMAC-SHA256"
@@ -134,7 +134,7 @@ def sign_request(*, method: str, url: str, region: str, service: str,
         amz_date
         or request_headers.get("x-amz-date")
         or request_headers.get("X-Amz-Date")
-        or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        or datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     )
     amz_date = str(timestamp)
     request_headers["x-amz-date"] = amz_date

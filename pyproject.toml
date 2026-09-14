@@ -51,8 +51,12 @@ exclude = [".venv", "data"]
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B"]
 ignore = [
-    "E501",   # 文案较长的提示语不强制折行
-    "B008",   # 允许在默认值里调用函数
+    "E501",    # 文案较长的提示语不强制折行
+    "B008",    # 允许在默认值里调用函数
+    "UP006",   # 保留 typing.Dict/List：与 typing.Optional 风格统一，避免 500+ 处纯注解改写
+    "UP035",   # 同上，保留 typing 里的容器别名导入
+    "UP037",   # 保留字符串注解，部分前向引用更易读
+    "UP045",   # 保留 Optional[X]
 ]
 
 [tool.ruff.lint.per-file-ignores]

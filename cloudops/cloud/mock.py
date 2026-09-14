@@ -16,7 +16,7 @@ import json
 import threading
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from ..config import Settings
 from ..errors import CloudError, NotFound

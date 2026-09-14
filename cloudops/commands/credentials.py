@@ -6,17 +6,16 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 
-from ..bot import Context, GROUP_CRED, GROUP_READ, confirm_keyboard
+from ..bot import GROUP_CRED, GROUP_READ, Context, confirm_keyboard
 from ..bot.formatter import format_credential_row
 from ..cloud import (
     available_provider_names,
     canonical_name,
-    get_provider_class,
-    is_known,
-    provider_help,
     create_provider,
+    get_provider_class,
+    provider_help,
 )
 from ..errors import CloudOpsError, CredentialError, NotFound, ValidationError
 from ..utils import mask_mapping

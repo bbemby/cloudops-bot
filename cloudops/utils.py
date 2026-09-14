@@ -10,7 +10,7 @@ import os
 import re
 import secrets
 import string
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
@@ -25,15 +25,15 @@ except Exception:  # pragma: no cover
 # --------------------------------------------------------------------------- #
 def now_utc() -> datetime:
     """当前 UTC 时间（带 tzinfo）。"""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def to_iso(value: Optional[datetime] = None) -> str:
     """序列化为数据库存储用的 ISO8601（秒级精度 + Z）。"""
     value = value or now_utc()
     if value.tzinfo is None:
-        value = value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def now_iso() -> str:
@@ -60,18 +60,18 @@ def parse_iso(text: Optional[str]) -> Optional[datetime]:
         else:
             return None
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
 
 
 def get_timezone(name: Optional[str]):
     """按名称取时区，取不到则回退 UTC。"""
     if not name or ZoneInfo is None:
-        return timezone.utc
+        return UTC
     try:
         return ZoneInfo(name)
     except Exception:
-        return timezone.utc
+        return UTC
 
 
 def format_local(text: Optional[str], tz_name: Optional[str] = None,

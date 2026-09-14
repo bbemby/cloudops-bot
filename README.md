@@ -4,6 +4,7 @@
 > 不用再记住各家控制台的入口和菜单。
 
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
+[![CI](https://github.com/bbemby/cloudops-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/bbemby/cloudops-bot/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-205%20passed-brightgreen)](tests/)
 [![Dependencies](https://img.shields.io/badge/deps-requests%20%7C%20aiohttp%20%7C%20cryptography-informational)](requirements.txt)
@@ -166,6 +167,10 @@ python main.py                     # 启动机器人
 ```bash
 python -m unittest discover -s tests -v      # 205 个用例，约 9 秒，零额外依赖
 ```
+
+CI 会在 Python 3.11 / 3.12 / 3.13 上跑全部用例，外加两段启动冒烟
+（用假 Token 验证"配置齐全 → 建库 → 退出码 0"，以及"启动失败只给人话、不留连接泄漏"），
+并用 `ruff check` 做静态检查。
 
 测试覆盖：配置解析、加密与密钥派生、数据库迁移与凭证生命周期、
 AWS SigV4 签名（对照 AWS 官方已知答案）、各云适配器（含 XML 命名空间这类真实坑）、

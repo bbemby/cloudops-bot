@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import os
 import tempfile
 import unittest
-import unittest.mock as mock
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from support import ROOT  # noqa: F401 - 触发 sys.path 注入
@@ -54,7 +52,7 @@ class TimeTest(unittest.TestCase):
         self.assertEqual(to_iso(local), "2026-01-02T03:00:00Z")
 
     def test_parse_iso_accepts_z_and_offset(self) -> None:
-        self.assertEqual(parse_iso("2026-01-02T03:04:05Z").tzinfo, timezone.utc)
+        self.assertEqual(parse_iso("2026-01-02T03:04:05Z").tzinfo, UTC)
         self.assertEqual(parse_iso("2026-01-02T03:04:05+00:00").hour, 3)
 
     def test_parse_iso_rejects_garbage(self) -> None:

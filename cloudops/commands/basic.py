@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, List
+from typing import Dict, List
 
-from ..bot import Context, GROUP_OTHER, GROUP_READ
-from ..bot.formatter import format_credential_fields
+from ..bot import GROUP_OTHER, GROUP_READ, Context
 from ..cloud import available_provider_names
 from ..models import ROLE_GUEST
 

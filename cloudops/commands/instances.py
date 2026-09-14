@@ -8,14 +8,12 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
-from ..bot import Context, GROUP_READ
+from ..bot import GROUP_READ, Context
 from ..bot.formatter import format_instance_detail, format_instance_line
 from ..cloud import Instance, available_provider_names, canonical_name, is_known
-from ..credentials import CredentialStore
-from ..errors import CredentialError, CloudError, NotFound, ValidationError
-from ..models import Credential
+from ..errors import CloudError, CredentialError, NotFound, ValidationError
 from ..utils import humanize_duration
 
 

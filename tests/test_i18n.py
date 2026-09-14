@@ -32,8 +32,7 @@ IGNORED = {
 
 
 def _iter_source_files():
-    for path in sorted(PACKAGE.rglob("*.py")):
-        yield path
+    yield from sorted(PACKAGE.rglob("*.py"))
 
 
 def _collect_keys() -> "dict[str, list[str]]":
