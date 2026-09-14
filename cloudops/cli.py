@@ -113,7 +113,12 @@ def main(argv=None) -> int:
     try:
         return asyncio.run(serve(settings))
     except ConfigError as exc:
-        print(f"✗ {exc}\n提示：先执行 `python main.py --check` 看缺哪一项。", file=sys.stderr)
+        # 只有配置确实缺项时，`--check` 才帮得上忙；SECRET_KEY 与库里对不上
+        # 这类错误 `--check` 会一路绿灯，指过去只会把人绕晕。
+        message = f"✗ {exc}"
+        if settings.missing_requirements():
+            message += "\n提示：先执行 `python main.py --check` 看缺哪一项。"
+        print(message, file=sys.stderr)
         return 2
     except CloudOpsError as exc:  # pragma: no cover - 启动阶段业务错误
         print(f"✗ 启动失败：{exc}", file=sys.stderr)

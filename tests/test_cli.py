@@ -85,6 +85,52 @@ class MainEntryTest(CliTestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn("配置文件不存在", result.stderr)
 
+    def test_startup_hint_points_at_check_when_config_incomplete(self) -> None:
+        """配置缺项时，应该把用户引到 `--check` 那份清单上。"""
+        result = self.run_cli("main.py", "-e", "/dev/null")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("TELEGRAM_BOT_TOKEN", result.stderr)
+        self.assertIn("python main.py --check", result.stderr)
+
+    def test_startup_hint_omitted_when_secret_key_mismatch(self) -> None:
+        """密钥对不上不是"缺配置"，`--check` 会一路绿灯，不能再指过去。"""
+        import asyncio
+
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from support import ADMIN_ID, Harness, make_settings
+
+        old_key = generate_key()
+        new_key = generate_key()
+        db_path = self.data_dir / "data" / "cloudops.db"      # 与 support.make_settings 保持一致
+
+        async def seed():
+            settings = make_settings(self.data_dir, secret_key=old_key)
+            harness = Harness(settings)
+            await harness.start()
+            harness.app.store.bind(ADMIN_ID, "mock", "default", {"token": "seed-token"})
+            await harness.stop()
+
+        asyncio.run(seed())
+        self.assertTrue(db_path.exists())
+
+        env = clean_env(
+            TELEGRAM_BOT_TOKEN="123456:TEST-TOKEN",
+            BOT_ADMIN_IDS="100000001",
+            SECRET_KEY=new_key,                                  # 与库里的指纹不一致
+            DATABASE_PATH=str(db_path),
+            MOCK_STATE_PATH=str(self.data_dir / "data" / "mock-cloud.json"),
+            ENABLE_MOCK_PROVIDER="true",
+            # 万一守卫失效，也要在本机失败，绝不真的去连 Telegram
+            TELEGRAM_API_BASE="http://127.0.0.1:9",
+            TELEGRAM_RETRIES="0",
+            TELEGRAM_REQUEST_TIMEOUT="2",
+        )
+        result = self.run_cli("main.py", "-e", "/dev/null", env=env)
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("SECRET_KEY 与数据库", result.stderr)
+        self.assertNotIn("python main.py --check", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+
     def test_bad_token_does_not_leak_traceback(self) -> None:
         """启动失败也要给人话，而不是甩一坨堆栈。"""
         env = self.good_env()
