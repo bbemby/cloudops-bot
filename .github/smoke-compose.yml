@@ -1,0 +1,6 @@
+# 仅供 CI 使用的 compose 覆盖文件：让容器与宿主机共享网络命名空间，
+# 这样容器里的 TELEGRAM_API_BASE=http://127.0.0.1:8099 能打到 runner 上跑的
+# Telegram API 桩（tests/tg_stub.py）。生产部署不要用这个文件。
+services:
+  cloudops-bot:
+    network_mode: host

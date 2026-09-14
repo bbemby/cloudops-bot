@@ -62,19 +62,50 @@ sudo systemctl restart cloudops-bot      # 停机时会等待后台创建任务�
 
 ## 2. Docker / Docker Compose
 
+镜像发布在 GHCR，一般不需要自己构建：
+
 ```bash
-cp .env.example .env && python manage.py gen-secret    # 填好 .env
-docker compose up -d --build
+cp .env.example .env && python manage.py gen-secret    # 填好 Token / SECRET_KEY
+mkdir -p data && sudo chown -R 10001:10001 data        # 容器内以 uid 10001 运行
+
+docker compose pull                                    # 拉取 CI 构建好的镜像
+docker compose up -d
 docker compose logs -f
+```
+
+想自己构建（改动过代码、或网络拉不到 GHCR）：
+
+```bash
+docker compose up -d --build          # 或 make docker-build-up
 ```
 
 要点：
 
 - `.env` 通过 `env_file` 注入，**不进镜像**（`.dockerignore` 已排除）；
 - `./data` 挂成卷，里面是 SQLite（凭证、日志、任务）与 mock 云状态；
-- 容器内以非 root 的 `cloudops` 用户运行；
-- 镜像自带 `HEALTHCHECK`（只检查数据库文件存在，不打外部 API，
-  避免把云厂商抖动误判成容器不健康）。
+- 容器内以非 root 的 `cloudops` 运行，**uid/gid 固定为 10001**（Dockerfile 里写死，
+  这样宿主机上 `chown 10001:10001 data` 就够，不必去猜 useradd 自动分配了多少号）；
+- 镜像自带 `HEALTHCHECK`（`deploy/healthcheck.py`：文件存在 + 能只读打开且已建表，
+  不打外部 API，避免把云厂商抖动误判成容器不健康）。
+  查看状态：`docker inspect -f '{{.State.Health.Status}}' cloudops-bot`；
+  失败原因在 `docker inspect -f '{{json .State.Health}}' cloudops-bot` 的 `Output` 里。
+
+### 停止与升级
+
+```bash
+docker compose down                       # 发 SIGTERM，等待后台任务收尾后退出
+docker compose pull && docker compose up -d   # 升级到新镜像
+```
+
+程序自己处理 `SIGTERM`：先停长轮询、等后台创建/销毁任务结束、关掉 HTTP 会话
+才退出（实测毫秒级，不会被 `docker stop` 的 10 秒宽限期 SIGKILL 掉）。
+
+### 两个常见的坑
+
+| 现象 | 原因 | 处理 |
+| --- | --- | --- |
+| `unable to open database file` | `./data` 属主不是 10001 | `sudo chown -R 10001:10001 data` |
+| 启动即报 `SECRET_KEY 与数据库中已有凭证不匹配` | 环境变量里的密钥和卷里凭证的加密密钥不是同一个（改过 `.env`、换过机器、恢复过别人的数据库） | ① 改回原来的 `SECRET_KEY`；② 或删掉 `data/cloudops.db` 重新 `/bind`。镜像启动即失败是**故意**的——不然要等到用户调用云凭证时才炸 |
 
 > 单实例约束：Telegram 的长轮询要求同一个 Bot Token 只有一个消费者。
 > 扩容会出现 409 Conflict，程序会打印明确提示并按退避重试，
@@ -138,4 +169,4 @@ sudo systemctl start cloudops-bot
 | `/list` 某平台报查询失败 | 该平台凭证失效或出网被拦：`python manage.py doctor --check-cloud` 定位到具体是哪条凭证 |
 | `/create` 一直不推送公网 IP | 默认等待 900 秒（`CREATE_TIMEOUT_SECONDS`）。超时后实例可能仍在创建，可用 `/list` 复查 |
 | 实例创建成功但没拿到 IP | 检查安全组/子网：AWS 需要 `AWS_ASSOCIATE_PUBLIC_IP=true` 且子网是公网子网 |
-| 更换了 `SECRET_KEY` | 已入库凭证无法解密，`/creds` 会提示，重新 `/bind` 一次即可 |
+| 启动即报 `SECRET_KEY 与数据库中已有凭证不匹配` | 换过 `SECRET_KEY`（或换了机器/恢复了别人的库），与卷里凭证的加密密钥不一致。启动阶段就会拦住并给出两种修复方式：改回原密钥，或删库重新 `/bind` |

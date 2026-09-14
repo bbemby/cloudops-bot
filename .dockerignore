@@ -1,27 +1,54 @@
-# 构建上下文瘦身：密钥、运行数据、缓存统统不进镜像
+# 构建上下文瘦身：密钥、运行数据、缓存统统不进镜像。
+#
+# 注意：Docker 的 .dockerignore 用 Go 的 filepath.Match 语义，`*` **不跨目录**，
+# 所以 `__pycache__/` 只能匹配根级目录，嵌套层的要写成 `**/__pycache__/`。
+# （这一条踩过坑：嵌套的 .pyc 会静默进镜像。）
+
+# ---- 密钥与本地配置 ----
 .env
 .env.*
 !.env.example
+
+# ---- 运行数据 ----
 data/
-*.db
-*.db-journal
-*.db-wal
-*.log
 logs/
+**/*.db
+**/*.db-journal
+**/*.db-wal
+**/*.log
+mock-cloud.json
+
+# ---- Python 缓存与虚拟环境（根级与嵌套都要写，见上面的说明）----
+__pycache__/
+**/__pycache__/
+*.py[cod]
+**/*.py[cod]
+.venv/
+**/.venv/
+venv/
+**/venv/
+.eggs/
+**/.eggs/
+*.egg-info/
+**/*.egg-info/
+build/
+dist/
+.mypy_cache/
+**/.mypy_cache/
+.ruff_cache/
+**/.ruff_cache/
+.pytest_cache/
+**/.pytest_cache/
+.coverage
+**/.coverage
+htmlcov/
+
+# ---- 仓库与工具文件（镜像里用不到）----
 .git/
 .gitignore
 .github/
 tests/
-__pycache__/
-*/__pycache__/
-*.py[cod]
-.venv/
-venv/
-.mypy_cache/
-.ruff_cache/
-.pytest_cache/
-.coverage
-htmlcov/
 docs/
+Makefile
 *.md
 !README.md

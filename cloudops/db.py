@@ -198,6 +198,26 @@ class Database:
         return self.path.exists()
 
     # ------------------------------------------------------------------ #
+    # 库级元信息（schema_meta）
+    # ------------------------------------------------------------------ #
+    def get_meta(self, key: str) -> Optional[str]:
+        """读取库级元信息，不存在返回 ``None``。"""
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT value FROM schema_meta WHERE key = ?", (str(key),)
+            ).fetchone()
+        return row["value"] if row else None
+
+    def set_meta(self, key: str, value: str) -> None:
+        """写入库级元信息（存在则覆盖）。"""
+        with self.connect() as conn:
+            conn.execute(
+                "INSERT INTO schema_meta(key, value) VALUES(?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                (str(key), str(value)),
+            )
+
+    # ------------------------------------------------------------------ #
     # 用户
     # ------------------------------------------------------------------ #
     def get_user(self, telegram_id: int) -> Optional[User]:

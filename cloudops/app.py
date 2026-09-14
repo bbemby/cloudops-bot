@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import signal
+import time
 from typing import Any, Dict, List, Optional
 
 from . import __version__
@@ -21,6 +22,7 @@ from .config import Settings
 from .credentials import CredentialStore
 from .crypto import SecretBox
 from .db import Database
+from .errors import ConfigError
 from .i18n import get_translator
 from .logging_setup import setup_logging
 
@@ -28,6 +30,15 @@ logger = logging.getLogger(__name__)
 
 #: 启动时丢弃的历史更新数量上限（避免重启后执行过期指令）
 DRAIN_LIMIT = 100
+
+#: SECRET_KEY 指纹在 schema_meta 表中的键名
+SECRET_FINGERPRINT_META = "secret_key_fingerprint"
+
+#: getUpdates 的正常行为是按 poll_timeout 挂住连接。若对端（自建网关、反代、
+#: 桩服务）立刻返回空，主循环就会以每秒上百次的频率空转，很快触发 Telegram
+#: 限流。低于这个耗时且没有更新时，补一小段间隔。
+FAST_EMPTY_THRESHOLD = 0.2
+FAST_EMPTY_SLEEP = 0.5
 
 
 class Application:
@@ -58,6 +69,7 @@ class Application:
         """启动前的一次性准备。"""
         self.settings.ensure_directories()
         self.db.initialize()
+        self._check_secret_key()
         register_all(self.dispatcher)
         await self.bot.start()
         await self._bootstrap_credentials()
@@ -71,6 +83,32 @@ class Application:
                 providers=", ".join(available_provider_names(self.settings)),
             ))
         logger.info("配置快照：%s", self.settings.as_log_fields())
+
+    def _check_secret_key(self) -> None:
+        """提前发现"SECRET_KEY 与卷里凭证不匹配"。
+
+        容器部署里密钥从环境变量注入、数据库在数据卷里，两者很容易不同步
+        （重建容器时改了 .env，或换了一台机器）。若不在这里拦住，用户会在
+        真正调用云 API 时才碰到"解密失败"，那时已无从判断是哪个环节的问题。
+        """
+        stored = self.db.get_meta(SECRET_FINGERPRINT_META)
+        current = self.box.fingerprint
+        if stored is None:
+            self.db.set_meta(SECRET_FINGERPRINT_META, current)
+            return
+        if stored == current:
+            return
+        count = self.db.count_credentials()
+        if count == 0:  # 库里没有凭证，换密钥没有损失，直接更新指纹
+            logger.warning("SECRET_KEY 已变更（库中暂无凭证，已更新密钥指纹）")
+            self.db.set_meta(SECRET_FINGERPRINT_META, current)
+            return
+        # 文案由词表统一提供（按配置语言渲染），避免同一句话在代码里再写一份
+        message = get_translator(self.settings.language)(
+            "error.secret_key_mismatch", count=count
+        )
+        raise ConfigError(message, key="error.secret_key_mismatch",
+                          params={"count": count})
 
     async def _bootstrap_credentials(self) -> None:
         """把 .env 里预置的凭证加密写入数据库（首次启动即开箱可用）。"""
@@ -159,6 +197,7 @@ class Application:
         logger.info("开始长轮询（timeout=%ss）…", self.settings.telegram.poll_timeout)
         backoff = 1.0
         while not self._stopping.is_set():
+            started = time.monotonic()
             try:
                 updates = await self.bot.get_updates(offset=self._offset)
                 backoff = 1.0
@@ -183,6 +222,10 @@ class Application:
             for update in updates:
                 self._offset = int(update.get("update_id", 0)) + 1
                 await self.dispatcher.handle_update(update)
+
+            # 对端没有按长轮询挂起连接时补间隔，避免空转打爆限流
+            if not updates and time.monotonic() - started < FAST_EMPTY_THRESHOLD:
+                await self._sleep(FAST_EMPTY_SLEEP)
 
     async def _sleep(self, seconds: float) -> None:
         try:

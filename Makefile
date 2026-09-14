@@ -7,7 +7,7 @@ PY ?= python3
 VENV ?= .venv
 BIN := $(VENV)/bin
 
-.PHONY: help venv install test test-v check doctor run gen-secret lint docker-build docker-up docker-down docker-logs clean
+.PHONY: help venv install test test-v check doctor run gen-secret lint docker-pull docker-build docker-up docker-build-up docker-down docker-logs docker-health clean
 
 help:  ## 显示所有可用目标
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -36,12 +36,20 @@ run:  ## 启动机器人（前台，Ctrl-C 优雅退出）
 	$(BIN)/python main.py
 
 lint:  ## 静态检查（需要 ruff）
-	$(BIN)/python -m ruff check cloudops tests main.py manage.py
+	$(BIN)/python -m ruff check cloudops tests deploy main.py manage.py
 
-docker-build:  ## 构建镜像
-	docker build -t cloudops-bot:latest .
+IMAGE ?= ghcr.io/bbemby/cloudops-bot:latest
 
-docker-up:  ## 用 compose 启动（后台）
+docker-pull:  ## 拉取官方预构建镜像
+	docker pull $(IMAGE)
+
+docker-build:  ## 本地构建镜像（tag 与 compose 里的一致）
+	docker build -t $(IMAGE) .
+
+docker-up:  ## 用 compose 启动（后台；用已拉取的镜像）
+	docker compose up -d
+
+docker-build-up:  ## 本地构建并启动
 	docker compose up -d --build
 
 docker-down:  ## 停止并移除容器
@@ -49,6 +57,9 @@ docker-down:  ## 停止并移除容器
 
 docker-logs:  ## 跟踪容器日志
 	docker compose logs -f
+
+docker-health:  ## 查看容器健康状态
+	docker inspect -f '{{.State.Health.Status}}' cloudops-bot
 
 clean:  ## 清理 pycache 与测试缓存
 	find . -type d -name __pycache__ -prune -exec rm -rf {} +

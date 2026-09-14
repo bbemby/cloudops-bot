@@ -206,12 +206,22 @@ cloudops-bot/
 # systemd（推荐，见 docs/DEPLOYMENT.md）
 sudo cp deploy/cloudops-bot.service /etc/systemd/system/ && sudo systemctl enable --now cloudops-bot
 
-# 或 Docker
-docker compose up -d --build
+# 或 Docker：用 CI 构建好的镜像
+cp .env.example .env && python manage.py gen-secret   # 填好 Token / 管理员 ID / SECRET_KEY
+mkdir -p data && sudo chown -R 10001:10001 data       # 容器内以 uid 10001 运行
+docker compose pull && docker compose up -d           # 或 docker compose up -d --build 本地构建
+docker compose logs -f
 ```
+
+镜像同时发布在 `ghcr.io/bbemby/cloudops-bot:latest`，每次推送到 `main`
+都会重新构建并跑一遍容器级冒烟测试（`docker compose up` → 处理指令 → 写库 →
+`docker stop` 优雅退出 → 校验数据卷），通过后才推送，见 `.github/workflows/docker.yml`。
 
 注意：**同一个 Bot Token 只能有一个进程在长轮询**，多开会看到 409 冲突；
 系统检测到 409 会打印明确提示并退避重试。
+
+> 换过 `SECRET_KEY` 又想复用旧的 `data/` 卷时，启动会直接失败并告诉你两种修复方式
+> ——不会等你调用云凭证时才报"解密失败"。
 
 ## 路线图
 

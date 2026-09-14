@@ -1,0 +1,201 @@
+name: Docker 镜像
+
+# 构建镜像 → 在真容器里做端到端冒烟测试 → 通过后推送到 GitHub Container Registry。
+#
+# 冒烟测试不依赖真实 Telegram 与真实云账号：
+#   本地跑一个 Telegram Bot API 桩（tests/tg_stub.py），让容器连它，
+#   于是"配置注入 → 建库 → 长轮询 → 处理指令 → 写库 → 优雅退出"整条链路
+#   都被真实地跑了一遍。
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-smoke:
+    name: 构建 + 容器冒烟测试
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    env:
+      COMPOSE: docker compose -f docker-compose.yml -f .github/smoke-compose.yml
+      STUB_LOG: /tmp/stub.log
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 计算镜像地址（GHCR 要求全小写）
+        id: meta
+        run: |
+          image="ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "short_sha=$(echo '${{ github.sha }}' | cut -c1-7)" >> "$GITHUB_OUTPUT"
+          echo "镜像地址：$image"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: 构建镜像（载入本地，供冒烟测试使用）
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: ${{ steps.meta.outputs.image }}:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # ------------------------------------------------------------------ #
+      # 等价于 README 里的前置步骤：准备 .env、给数据目录授权
+      # ------------------------------------------------------------------ #
+      - name: 准备 .env 与 data 目录
+        run: |
+          key="$(python3 -c 'import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).decode())')"
+          cat > .env <<EOF
+          TELEGRAM_BOT_TOKEN=123456789:CI-DUMMY-TOKEN
+          BOT_ADMIN_IDS=123456
+          SECRET_KEY=$key
+          BOT_LANGUAGE=zh
+          DATABASE_PATH=./data/cloudops.db
+          MOCK_STATE_PATH=./data/mock-cloud.json
+          ENABLE_MOCK_PROVIDER=true
+          DEFAULT_PROVIDER=mock
+          TELEGRAM_API_BASE=http://127.0.0.1:8099
+          TELEGRAM_RETRIES=0
+          EOF
+          mkdir -p data
+          sudo chown -R 10001:10001 data     # 容器内以 uid 10001 运行（见 Dockerfile）
+          # 让 compose 用刚刚构建好的镜像，而不是去 registry 拉
+          docker tag '${{ steps.meta.outputs.image }}:ci' '${{ steps.meta.outputs.image }}:latest'
+
+      - name: 校验 compose 文件
+        run: |
+          $COMPOSE config -q
+          $COMPOSE config --images
+          $COMPOSE config --services
+
+      - name: 启动 Telegram API 桩
+        run: |
+          nohup python3 tests/tg_stub.py --port 8099 --log "$STUB_LOG" \
+            --expect-token 123456789:CI-DUMMY-TOKEN \
+            --script-after 3 --script-chat 123456 \
+            --script-text "/bind mock smoke token=smoke-token-123" \
+            > /tmp/stub.out 2>&1 &
+          for _ in $(seq 1 30); do
+            # 注意：探活用 getWebhookInfo，不要用 getMe —— 否则探活本身
+            # 也会被桩记录，下面的 getMe 断言就形同虚设了。
+            curl -fsS -X POST \
+              "http://127.0.0.1:8099/bot123456789:CI-DUMMY-TOKEN/getWebhookInfo" > /dev/null && break
+            sleep 1
+          done
+
+      - name: 启动容器（docker compose up -d）
+        run: |
+          $COMPOSE up -d
+          # 等到"机器人连上 Telegram 并处理完脚本指令"
+          for _ in $(seq 1 60); do
+            grep -q '凭证已绑定并激活' "$STUB_LOG" 2>/dev/null && break
+            sleep 1
+          done
+
+      - name: 断言① 容器在运行
+        run: |
+          $COMPOSE ps
+          test "$(docker inspect -f '{{.State.Running}}' cloudops-bot)" = "true"
+
+      - name: 断言② 指令链路通了（getMe → 菜单注册 → 指令回复）
+        run: |
+          set -x
+          grep -q '"method": "getMe", "status": 200' "$STUB_LOG"
+          grep -q '"method": "setMyCommands", "status": 200' "$STUB_LOG"
+          grep -q '凭证已绑定并激活' "$STUB_LOG"
+          set +x
+          cat "$STUB_LOG" | grep -v '"getUpdates"'
+
+      - name: 断言③ 启动日志干净（无堆栈、无未关闭会话）
+        run: |
+          $COMPOSE logs --no-color > /tmp/compose.log
+          cat /tmp/compose.log
+          grep -q '已启动' /tmp/compose.log
+          ! grep -q 'Traceback' /tmp/compose.log
+          ! grep -q 'Unclosed client session' /tmp/compose.log
+
+      - name: 断言④ 镜像自带的健康检查在容器内通过
+        run: docker exec cloudops-bot python deploy/healthcheck.py
+
+      - name: 断言⑤ docker stop 走优雅退出（不是超时被杀）
+        run: |
+          start=$(date +%s)
+          docker stop -t 10 cloudops-bot
+          elapsed=$(( $(date +%s) - start ))
+          code="$(docker inspect -f '{{.State.ExitCode}}' cloudops-bot)"
+          echo "停机耗时 ${elapsed}s，退出码 ${code}"
+          test "$code" = "0"        # 0 = 自己收尾后退出，137 = 被 SIGKILL
+          test "$elapsed" -lt 6     # 真优雅退出是毫秒级，卡到 10s 说明没处理 SIGTERM
+
+      - name: 断言⑥ 数据落在卷里（重启后凭证仍在）
+        run: |
+          docker run --rm --env-file .env -v "$PWD/data:/app/data" \
+            -e DATABASE_PATH=/app/data/cloudops.db \
+            --entrypoint python '${{ steps.meta.outputs.image }}:ci' manage.py creds \
+            | tee /tmp/creds.txt
+          grep -q 'mock' /tmp/creds.txt
+
+      - name: 断言⑦ 换了 SECRET_KEY 就 fail fast（而不是跑起来之后才报解密失败）
+        run: |
+          other="$(python3 -c 'import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).decode())')"
+          set +e
+          docker run --rm --env-file .env -e "SECRET_KEY=$other" \
+            -v "$PWD/data:/app/data" -e DATABASE_PATH=/app/data/cloudops.db \
+            '${{ steps.meta.outputs.image }}:ci' > /tmp/mismatch.log 2>&1
+          code=$?
+          set -e
+          cat /tmp/mismatch.log
+          test "$code" = "2"
+          grep -q 'SECRET_KEY 与数据库' /tmp/mismatch.log
+
+      - name: 冒烟测试收尾
+        if: always()
+        run: |
+          $COMPOSE down -v || true
+          sudo rm -rf data
+          pkill -f tg_stub.py || true
+
+      # ------------------------------------------------------------------ #
+      # 通过全部断言后才推送
+      # ------------------------------------------------------------------ #
+      - name: 登录 GHCR
+        if: github.event_name == 'push'
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" \
+            | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: 推送镜像
+        if: github.event_name == 'push'
+        run: |
+          image='${{ steps.meta.outputs.image }}'
+          docker tag "$image:ci" "$image:latest"
+          docker tag "$image:ci" "$image:sha-${{ steps.meta.outputs.short_sha }}"
+          tags=("$image:latest" "$image:sha-${{ steps.meta.outputs.short_sha }}")
+          # 打 tag 发布时（v1.0.0 之类）额外推一个语义化版本号
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            version="${GITHUB_REF#refs/tags/}"
+            docker tag "$image:ci" "$image:$version"
+            tags+=("$image:$version")
+          fi
+          for tag in "${tags[@]}"; do
+            docker push "$tag"
+          done
+          echo "### 镜像已推送" >> "$GITHUB_STEP_SUMMARY"
+          for tag in "${tags[@]}"; do
+            echo "- \`$tag\`" >> "$GITHUB_STEP_SUMMARY"
+          done

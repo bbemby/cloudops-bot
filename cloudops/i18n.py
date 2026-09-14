@@ -156,6 +156,11 @@ MESSAGES: Dict[str, Dict[str, str]] = {
         "error.missing_secret_key": "缺少 SECRET_KEY，请执行 `python manage.py gen-secret` 并写入 .env",
         "error.invalid_secret_key": "SECRET_KEY 不是合法的 Fernet key（应为 44 字符 base64）",
         "error.decrypt_failed": "凭证解密失败：SECRET_KEY 可能已变更，请重新绑定云平台凭证",
+        "error.secret_key_mismatch": (
+            "🔐 SECRET_KEY 与数据库中已有凭证不匹配：库里的凭证是用另一个密钥加密的。\n"
+            "修复方式：① 把 SECRET_KEY 改回原来那一个（推荐）；"
+            "② 或删除数据卷里的数据库重新 /bind（现有 {count} 条凭证需重绑）。"
+        ),
         "error.missing_credential_fields": "❌ {provider} 缺少凭证字段：{fields}\n\n{usage}",
         "error.credential_missing": "❌ 尚未为 {provider} 绑定凭证。\n\n{usage}",
         "error.credential_not_found": "❌ 凭证不存在：{target}",
@@ -291,6 +296,11 @@ MESSAGES: Dict[str, Dict[str, str]] = {
         "error.missing_secret_key": "SECRET_KEY missing; run `python manage.py gen-secret` and put it into .env",
         "error.invalid_secret_key": "SECRET_KEY is not a valid Fernet key (44-char base64 expected)",
         "error.decrypt_failed": "Failed to decrypt credential: SECRET_KEY may have changed, please re-bind",
+        "error.secret_key_mismatch": (
+            "🔐 SECRET_KEY does not match the credentials already stored in the database.\n"
+            "Fix: (1) restore the original SECRET_KEY (recommended), or "
+            "(2) delete the database volume and re-bind the {count} credential(s)."
+        ),
         "error.missing_credential_fields": "❌ {provider} is missing fields: {fields}\n\n{usage}",
         "error.credential_missing": "❌ No credential bound for {provider}.\n\n{usage}",
         "error.credential_not_found": "❌ No such credential: {target}",

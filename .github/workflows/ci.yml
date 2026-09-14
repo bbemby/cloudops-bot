@@ -83,4 +83,4 @@ jobs:
         run: pip install "ruff>=0.6"
 
       - name: ruff check
-        run: ruff check cloudops tests main.py manage.py
+        run: ruff check cloudops tests deploy main.py manage.py
