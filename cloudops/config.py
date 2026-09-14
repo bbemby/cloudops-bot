@@ -137,6 +137,39 @@ class AwsDefaults:
 
 
 @dataclass
+class WebSettings:
+    """Web 管理面板配置（论文之外的扩展：给 ChatOps 补一个图形入口）。
+
+    面板与 Bot 共享同一个数据库、同一套凭证仓库与审计日志，因此两边的
+    可见状态天然一致；它只多提供"批量浏览"与"大屏概览"这类聊天窗口不擅长的视角。
+    """
+
+    enabled: bool = True
+    host: str = "0.0.0.0"
+    port: int = 9878
+    admin_password: str = ""
+    """为空时每次启动生成随机口令并打到日志里（避免出现无口令可登录的面板）。"""
+
+    session_ttl_seconds: int = 8 * 3600
+    secure_cookie: bool = False
+    """面板挂在 HTTPS 反代后面时应置为 true，让浏览器只在加密连接上回传会话。"""
+
+    readonly: bool = False
+    """只读模式：查询照常，所有写操作（销毁/改凭证/改角色）返回 403。"""
+
+    title: str = "CloudOps 管理面板"
+    trust_proxy: bool = False
+    """是否信任 X-Forwarded-For（登录限速按来源 IP 计数时才需要打开）。"""
+
+    max_login_attempts: int = 5
+    login_window_seconds: int = 300
+
+    @property
+    def generated_password(self) -> bool:
+        return not self.admin_password
+
+
+@dataclass
 class BootstrapCredential:
     """首次启动时自动写入数据库的默认凭证（来自 .env，可留空）。"""
 
@@ -186,6 +219,7 @@ class Settings:
     digitalocean: DigitalOceanDefaults = field(default_factory=DigitalOceanDefaults)
     aws: AwsDefaults = field(default_factory=AwsDefaults)
     bootstrap: BootstrapCredential = field(default_factory=BootstrapCredential)
+    web: WebSettings = field(default_factory=WebSettings)
     env_file: Optional[Path] = None
 
     # ------------------------------------------------------------------ #
@@ -271,6 +305,19 @@ class Settings:
                 aws_session_token=_env_get("AWS_SESSION_TOKEN"),
                 aws_region=_env_get("AWS_REGION") or _env_get("AWS_DEFAULT_REGION"),
             ),
+            web=WebSettings(
+                enabled=_env_bool("WEB_ENABLED", True),
+                host=_env_str("WEB_HOST", "0.0.0.0"),
+                port=_env_int("WEB_PORT", 9878),
+                admin_password=_env_str("WEB_ADMIN_PASSWORD", ""),
+                session_ttl_seconds=max(300, _env_int("WEB_SESSION_TTL_SECONDS", 8 * 3600)),
+                secure_cookie=_env_bool("WEB_SECURE_COOKIE", False),
+                readonly=_env_bool("WEB_READONLY", False),
+                title=_env_str("WEB_TITLE", "CloudOps 管理面板"),
+                trust_proxy=_env_bool("WEB_TRUST_PROXY", False),
+                max_login_attempts=max(1, _env_int("WEB_MAX_LOGIN_ATTEMPTS", 5)),
+                login_window_seconds=max(30, _env_int("WEB_LOGIN_WINDOW_SECONDS", 300)),
+            ),
             env_file=env_path,
         )
         return settings
@@ -296,6 +343,8 @@ class Settings:
         problems = self.missing_requirements()
         if not require_telegram:
             problems = [p for p in problems if not p.startswith("TELEGRAM_BOT_TOKEN")]
+        if self.web.enabled and not 0 <= self.web.port <= 65535:
+            problems.append(f"WEB_PORT 非法：{self.web.port}（应在 1-65535 之间）")
         if problems:
             raise ConfigError(
                 "配置校验失败：\n" + "\n".join(f"  • {item}" for item in problems),
@@ -319,6 +368,10 @@ class Settings:
             "bootstrap_digitalocean_token": self.bootstrap.digitalocean_token,
             "bootstrap_aws_access_key_id": self.bootstrap.aws_access_key_id,
             "mock_provider": str(self.enable_mock_provider),
+            "web_enabled": str(self.web.enabled),
+            "web_listen": f"{self.web.host}:{self.web.port}",
+            "web_readonly": str(self.web.readonly),
+            "web_admin_password": self.web.admin_password,
         }
         return redact_mapping(fields)
 

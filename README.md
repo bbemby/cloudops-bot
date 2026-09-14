@@ -6,7 +6,7 @@
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
 [![CI](https://github.com/bbemby/cloudops-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/bbemby/cloudops-bot/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-205%20passed-brightgreen)](tests/)
+[![Tests](https://img.shields.io/badge/tests-259%20passed-brightgreen)](tests/)
 [![Dependencies](https://img.shields.io/badge/deps-requests%20%7C%20aiohttp%20%7C%20cryptography-informational)](requirements.txt)
 
 ---
@@ -36,6 +36,7 @@
 - **凭证管理**：`/bind do main token=xxx` 边绑定边校验，`/creds` 查看（字段名脱敏、密钥不回显），`/switch` 切换工作区，`/unbind` 确认后删除。
 - **审计与任务**：`/logs` 看操作日志，`/tasks` 看后台任务，两者都按权限自动过滤范围。
 - **可运维性**：`manage.py doctor` 自检配置/数据库/云凭证，`--check` 启动前体检，优雅退出时等待后台任务收尾。
+- **Web 管理面板**：`http://<主机>:9878` 图形化查看多云实例、销毁机器、管理凭证与权限、翻审计日志；与机器人**共用同一个数据库**，聊天里刚开的机器刷新就能看到，面板上的操作也写进同一份操作日志。
 - **中英双语 + 可插拔即时通讯层**：界面文案全部走 i18n 词表；Telegram 只是当前实现，`TelegramTransport` 协议留好了替换接口。
 
 ## 架构
@@ -56,6 +57,13 @@
    │ commands/     basic  credentials  instances   │  ← 业务用例（论文 4.3 的用例）
    │               lifecycle(u)                     │
    └───────────────▲──────────────────────────────┘
+                   │ 同一个 CredentialStore / Database
+   ┌───────────────┴──────────────────────────────┐
+   │ web/          浏览器（同一套原语的第二个入口）  │
+   │   server.py   路由 + 认证 + CSRF + 安全响应头  │
+   │   service.py  面板业务视图（脱敏、能力驱动）    │
+   │   static/ templates/  原生 CSS/JS，无构建步骤  │
+   └──────────────────────────────────────────────┘
                    │ CredentialStore（凭证 → provider 实例）
    ┌───────────────┴──────────────────────────────┐
    │ cloud/        registry.py   适配器注册表      │
@@ -93,6 +101,10 @@ python main.py                     # 启动机器人
 ```
 
 打开与机器人的私聊（或把它拉进群），发送 `/start` 就能看到指令菜单。
+
+管理面板同时监听 `http://127.0.0.1:9878`（口令取自 `.env` 的 `WEB_ADMIN_PASSWORD`，
+留空则每次启动随机生成并打在日志里；不需要就设 `WEB_ENABLED=false` 关掉）。
+**面向公网之前请先读上面的安全提示或 [docs/DOCKER.md](docs/DOCKER.md#4-面板开门之前先想清楚)**。
 
 **没有云账号也能跑通全流程**：在 `.env` 里设置 `ENABLE_MOCK_PROVIDER=true`，
 `/bind mock demo token=any` 之后，`/create mock`、`/list mock`、`/delete` 全部可用，
@@ -165,7 +177,8 @@ python main.py                     # 启动机器人
 ## 开发与测试
 
 ```bash
-python -m unittest discover -s tests -v      # 205 个用例，约 9 秒，零额外依赖
+python -m unittest discover -s tests -v      # 259 个用例，约 15 秒，零额外依赖
+python -m ruff check cloudops tests          # 静态检查
 ```
 
 CI 会在 Python 3.11 / 3.12 / 3.13 上跑全部用例，外加两段启动冒烟
@@ -174,7 +187,8 @@ CI 会在 Python 3.11 / 3.12 / 3.13 上跑全部用例，外加两段启动冒�
 
 测试覆盖：配置解析、加密与密钥派生、数据库迁移与凭证生命周期、
 AWS SigV4 签名（对照 AWS 官方已知答案）、各云适配器（含 XML 命名空间这类真实坑）、
-指令路由与权限矩阵、确认流、i18n 词表一致性、以及端到端的"绑定 → 创建 → 查询 → 确认销毁"闭环。
+指令路由与权限矩阵、确认流、i18n 词表一致性、Web 面板（会话签名/CSRF/限速/静态白名单/
+能力驱动视图/凭证脱敏）、以及端到端的"绑定 → 创建 → 查询 → 确认销毁"闭环。
 
 ```bash
 python manage.py doctor --check-cloud   # 对已绑定凭证做一次真实 API 调用
@@ -191,27 +205,35 @@ cloudops-bot/
 │   ├── bot/              # Telegram 客户端、路由、限流、确认、格式化
 │   ├── commands/         # 业务用例
 │   ├── cloud/            # 云厂商适配器（含 SigV4、Mock）
+│   ├── web/              # Web 管理面板（路由、会话、脱敏视图、静态资源）
 │   ├── config.py crypto.py db.py i18n.py errors.py utils.py
 │   └── ...
 ├── tests/                # 单元 + 集成测试
 ├── docs/DEPLOYMENT.md    # 部署（systemd / Docker / 反向代理）
+├── docs/DOCKER.md        # Docker 部署教程（手把手 + 排障表 + 安全清单）
+├── Dockerfile docker-compose.yml
 └── .env.example
 ```
 
 ## 部署
 
-`.env` 填好后：
+`.env` 填好后二选一：
 
 ```bash
-# systemd（推荐，见 docs/DEPLOYMENT.md）
+# 方式一：systemd（裸机，见 docs/DEPLOYMENT.md）
 sudo cp deploy/cloudops-bot.service /etc/systemd/system/ && sudo systemctl enable --now cloudops-bot
 
-# 或 Docker：用 CI 构建好的镜像
-cp .env.example .env && python manage.py gen-secret   # 填好 Token / 管理员 ID / SECRET_KEY
-mkdir -p data && sudo chown -R 10001:10001 data       # 容器内以 uid 10001 运行
+# 方式二：Docker（完整教程见 docs/DOCKER.md）
+mkdir -p data && sudo chown -R 10001:10001 data       # 容器内以固定 uid 10001 运行
+python manage.py gen-secret -w .env                   # 生成 SECRET_KEY 并写进 .env
 docker compose pull && docker compose up -d           # 或 docker compose up -d --build 本地构建
-docker compose logs -f
+docker compose logs -f                                # 看到"已连接 / 面板已监听"即可
+curl -s http://127.0.0.1:9878/healthz                 # 面板活没活
 ```
+
+**只想跑容器、不想克隆源码**：把 `docker-compose.yml` 与 `.env.example` 两个文件下载下来
+（重命名成 `.env`）就够，镜像从 `ghcr.io/bbemby/cloudops-bot` 拉，见
+[docs/DOCKER.md#1-五分钟上手](docs/DOCKER.md#1-五分钟上手)。
 
 镜像同时发布在 `ghcr.io/bbemby/cloudops-bot:latest`，每次推送到 `main`
 都会重新构建并跑一遍容器级冒烟测试（`docker compose up` → 处理指令 → 写库 →

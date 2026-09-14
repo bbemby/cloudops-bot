@@ -25,6 +25,7 @@ from .db import Database
 from .errors import ConfigError
 from .i18n import get_translator
 from .logging_setup import setup_logging
+from .web import WebServer
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,10 @@ class Application:
         )
         self._stopping = asyncio.Event()
         self._offset: Optional[int] = None
+        #: Web 管理面板（`WEB_ENABLED=false` 时为 None，容器里也就不会监听端口）
+        self.web: Optional[WebServer] = None
+        if settings.web.enabled:
+            self.web = WebServer(settings, self.db, self.store, self.jobs)
 
     # ------------------------------------------------------------------ #
     async def setup(self) -> None:
@@ -72,6 +77,7 @@ class Application:
         self._check_secret_key()
         register_all(self.dispatcher)
         await self.bot.start()
+        await self._start_web_panel()
         await self._bootstrap_credentials()
         await self._register_bot_commands()
         if self.settings.banner:
@@ -109,6 +115,19 @@ class Application:
         )
         raise ConfigError(message, key="error.secret_key_mismatch",
                           params={"count": count})
+
+    async def _start_web_panel(self) -> None:
+        """启动 Web 管理面板（论文之外的扩展：ChatOps 之外再给一个图形入口）。
+
+        与 Bot 共用事件循环，因此面板上的操作与聊天指令串行执行，不会出现
+        "两边同时改同一个凭证"的竞态。
+        """
+        if self.web is None:
+            return
+        await self.web.start()
+        if self.settings.banner:
+            logger.info("管理面板：http://%s:%s/（容器外请用宿主机地址 + 映射端口）",
+                        self.settings.web.host, self.web.port_in_use)
 
     async def _bootstrap_credentials(self) -> None:
         """把 .env 里预置的凭证加密写入数据库（首次启动即开箱可用）。"""
@@ -249,8 +268,10 @@ class Application:
 
     # ------------------------------------------------------------------ #
     async def shutdown(self) -> None:
-        """优雅退出：等待后台任务 → 关闭 HTTP 会话。"""
+        """优雅退出：先停面板（不再接新请求）→ 等后台任务 → 关闭 HTTP 会话。"""
         self.confirms.purge()
+        if self.web is not None:
+            await self.web.stop()
         await self.jobs.shutdown(timeout=30.0)
         await self.bot.close()
         t = get_translator(self.settings.language)

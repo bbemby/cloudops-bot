@@ -73,6 +73,63 @@ class ReadmeTest(unittest.TestCase):
         self.assertIn("](.env.example)", README)
 
 
+class AdminPanelDocTest(unittest.TestCase):
+    """.env.example 里写的端口、README 里的说明、代码里的默认值必须一致。"""
+
+    def test_readme_documents_the_panel(self) -> None:
+        for text in ("9878", "WEB_ADMIN_PASSWORD", "WEB_ENABLED=false"):
+            self.assertIn(text, README, f"README 没提到面板相关配置：{text}")
+
+    def test_readme_links_to_docker_tutorial(self) -> None:
+        self.assertIn("](docs/DOCKER.md", README)      # 允许带 #锚点 的写法
+        self.assertTrue((ROOT / "docs" / "DOCKER.md").exists())
+
+    def test_env_example_documents_panel_security_switches(self) -> None:
+        for name in ("WEB_ENABLED", "WEB_ADMIN_PASSWORD", "WEB_READONLY",
+                     "WEB_SECURE_COOKIE", "WEB_TRUST_PROXY"):
+            self.assertIn(f"\n{name}=", ENV_EXAMPLE, f".env.example 缺少 {name}")
+
+    def test_env_default_port_matches_config(self) -> None:
+        from cloudops.config import WebSettings
+
+        self.assertEqual(WebSettings().port, 9878)
+        self.assertIn("\nWEB_PORT=9878\n", ENV_EXAMPLE)
+        self.assertIn("9878", (ROOT / "Dockerfile").read_text(encoding="utf-8"))
+
+    def test_compose_maps_the_panel_port(self) -> None:
+        compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+        self.assertIn("${WEB_PANEL_PORT:-9878}:9878", compose)
+
+
+class DockerTutorialTest(unittest.TestCase):
+    """教程里的命令必须是真命令 —— 照抄能跑，而不是"看着像"。"""
+
+    def setUp(self) -> None:
+        self.doc = (ROOT / "docs" / "DOCKER.md").read_text(encoding="utf-8")
+
+    def test_documented_commands_exist(self) -> None:
+        # 教程里出现的 CLI 用法都要在代码里真的支持
+        for command in ("manage.py gen-secret -w", "main.py -e .env --check",
+                        "docker compose pull", "docker compose up -d",
+                        "WEB_PANEL_PORT"):
+            self.assertIn(command, self.doc, f"教程没写 {command}")
+
+    def test_gen_secret_write_is_supported_by_manage_py(self) -> None:
+        source = (ROOT / "manage.py").read_text(encoding="utf-8")
+        self.assertIn('"--write"', source)
+
+    def test_docker_run_example_matches_the_image(self) -> None:
+        dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+        self.assertIn("EXPOSE 9878", dockerfile)
+        self.assertIn("python deploy/healthcheck.py", dockerfile)
+        self.assertIn("useradd --uid 10001", dockerfile)
+
+    def test_tutorial_states_verification_level(self) -> None:
+        """教程末尾要诚实标明哪些是实测过的、哪些没跑过。"""
+        self.assertIn("验证程度", self.doc)
+        self.assertIn("实测通过", self.doc)
+
+
 class CommandDocTest(AsyncTestCase):
     def test_every_command_is_documented(self) -> None:
         """所有注册的指令都要出现在 README 里，避免"隐藏功能"。"""

@@ -23,7 +23,7 @@ if str(ROOT) not in sys.path:  # 允许 `python -m unittest` 直接跑
 
 from cloudops.app import Application
 from cloudops.bot.telegram import TelegramClient, TelegramError
-from cloudops.config import Settings, TelegramSettings
+from cloudops.config import Settings, TelegramSettings, WebSettings
 from cloudops.crypto import generate_key
 
 #: 测试用固定身份
@@ -164,6 +164,9 @@ def make_settings(tmp_path: Path, **overrides: Any) -> Settings:
         create_poll_interval=2.0,
         create_timeout_seconds=60,
         rate_limit_per_minute=0,          # 默认不限速，个别用例自行调小
+        # Web 面板默认关掉：套件里几十个用例都会 setup()，逐个去抢 9878 端口
+        # 只会带来互相干扰。需要面板的用例显式打开（端口用 0 让内核分配）。
+        web=WebSettings(enabled=False),
     )
     for key, value in overrides.items():
         setattr(settings, key, value)

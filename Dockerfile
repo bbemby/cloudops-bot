@@ -7,7 +7,12 @@
 #
 #   自己构建：
 #     docker build -t cloudops-bot .
-#     docker run -d --name cloudops-bot --env-file .env -v "$PWD/data:/app/data" cloudops-bot
+#     docker run -d --name cloudops-bot --env-file .env -p 9878:9878 \
+#       -v "$PWD/data:/app/data" cloudops-bot
+#
+#   端口：
+#     * 9878 —— Web 管理面板（登录口令见 WEB_ADMIN_PASSWORD；留空则每次启动
+#       随机生成并打印在容器日志里）。只跑 ChatOps 不要面板时设 WEB_ENABLED=false。
 #
 # 说明：
 #   * 镜像里不含任何密钥，全部通过 --env-file / 编排文件注入；
@@ -31,6 +36,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # 再拷代码（.dockerignore 已经排除了 .env / data / 测试缓存）
 COPY . .
+
+# Web 管理面板端口（容器内固定 9878；compose 里映射到宿主机同名端口）
+EXPOSE 9878
 
 # 非 root 运行：uid/gid 固定，宿主机 bind mount 的 ./data 用 10001 授权即可。
 # 固定 uid 是为了让文档与脚本里的 chown 不必靠猜（useradd 自动取号会随基础镜像变化）。

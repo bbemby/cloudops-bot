@@ -159,5 +159,114 @@ class PollLoopPacingTest(AsyncTestCase):
         self.run_async(scenario())
 
 
+class HealthcheckTest(unittest.TestCase):
+    """``deploy/healthcheck.py``：容器健康判定的唯一依据，必须真按 WEB_ENABLED 走。
+
+    这些用例不需要 docker —— 直接以子进程方式跑脚本，观察退出码与 stderr。
+    """
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp_path = Path(self._tmp.name)
+        self.db_path = self.tmp_path / "cloudops.db"
+        self.server = None
+
+    def tearDown(self) -> None:
+        if self.server is not None:
+            self.server.shutdown()
+            self.server.server_close()
+        self._tmp.cleanup()
+
+    # -- 辅助 ---------------------------------------------------------- #
+    def _make_database(self) -> None:
+        from cloudops.db import Database
+
+        Database(self.db_path).initialize()      # schema_meta 会写入版本行
+
+    def _start_stub_panel(self, payload: bytes) -> int:
+        """一个只回固定 JSON 的"面板"，返回监听端口。"""
+        import json
+        import threading
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+        class Handler(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def log_message(self, *_args):
+                pass
+
+            def do_GET(self):                    # noqa: N802 - 标准库命名
+                body = payload if self.path == "/healthz" else json.dumps({}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        return self.server.server_address[1]
+
+    def _run(self, **env_extra):
+        import os
+        import subprocess
+        import sys
+
+        root = Path(__file__).resolve().parents[1]
+        env = dict(os.environ)
+        env.update({
+            "DATABASE_PATH": str(self.db_path),
+            "PYTHONPATH": str(root),
+        })
+        for key, value in env_extra.items():
+            if value is None:
+                env.pop(key, None)
+            else:
+                env[key] = str(value)
+        return subprocess.run(
+            [sys.executable, str(root / "deploy" / "healthcheck.py")],
+            capture_output=True, text=True, env=env, timeout=60,
+        )
+
+    # -- 用例 ---------------------------------------------------------- #
+    def test_missing_database_is_unhealthy(self) -> None:
+        result = self._run(WEB_ENABLED="false")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("数据库文件不存在", result.stderr)
+
+    def test_database_only_when_panel_disabled(self) -> None:
+        self._make_database()
+        result = self._run(WEB_ENABLED="false")
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_panel_must_answer_when_enabled(self) -> None:
+        """面板开着却连不上 → 不健康（否则"容器 healthy 但面板 502"会被漏掉）。"""
+        self._make_database()
+        result = self._run(WEB_ENABLED="true", WEB_PORT=1)     # 1 号端口必然连不上
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("管理面板无响应", result.stderr)
+
+    def test_panel_alive_is_healthy(self) -> None:
+        self._make_database()
+        port = self._start_stub_panel(b'{"status": "ok", "version": "1.0.0"}')
+        result = self._run(WEB_ENABLED="true", WEB_PORT=port)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_panel_wrong_payload_is_unhealthy(self) -> None:
+        """端口有人应，但不是我们的面板（或它自己没起来）→ 也算不健康。"""
+        self._make_database()
+        port = self._start_stub_panel(b'{"status": "degraded"}')
+        result = self._run(WEB_ENABLED="true", WEB_PORT=port)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("返回异常", result.stderr)
+
+    def test_web_enabled_defaults_to_true(self) -> None:
+        """不设 WEB_ENABLED 时按"开着"处理，与 config.py 的默认值一致。"""
+        self._make_database()
+        result = self._run(WEB_ENABLED=None, WEB_PORT=1)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("管理面板无响应", result.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()

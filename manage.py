@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """运维小工具集（不需要 Bot 在线即可执行）。
 
-    python manage.py gen-secret          # 生成 SECRET_KEY
+    python manage.py gen-secret          # 生成 SECRET_KEY（只打印）
+    python manage.py gen-secret -w       # 生成并直接写进 .env
     python manage.py doctor              # 体检：配置 / 数据库 / 网络 / 云凭证
     python manage.py init-db             # 建库建表（幂等）
     python manage.py users               # 列出已授权用户
@@ -17,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 from typing import List, Optional
 
 from cloudops import __homepage__, __project__, __version__
@@ -31,14 +33,74 @@ ROLES = ("admin", "user", "guest")
 # --------------------------------------------------------------------------- #
 # 子命令
 # --------------------------------------------------------------------------- #
-def cmd_gen_secret(_args, _settings: Optional[Settings] = None) -> int:
+def cmd_gen_secret(args, _settings: Optional[Settings] = None) -> int:
     key = generate_key()
-    print(key)
-    print("\n把上面这行写进 .env（或容器环境变量）：", file=sys.stderr)
-    print(f"  SECRET_KEY={key}", file=sys.stderr)
-    print("注意：SECRET_KEY 变了以后，已入库的云凭证将无法解密，需要重新 /bind。",
-          file=sys.stderr)
+    # -w 不带值时写到 -e 指定的文件（默认 .env），避免"我明明指了 -e 却改了另一个文件"；
+    # 完全没给 -w（None）才是"只打印"的老行为。
+    raw_write = getattr(args, "write", None)
+    if raw_write is None:
+        target = None
+    else:
+        target = raw_write or getattr(args, "env_file", None) or DEFAULT_ENV_FILE
+    if not target:
+        print(key)
+        print("\n把上面这行写进 .env（或容器环境变量）：", file=sys.stderr)
+        print(f"  SECRET_KEY={key}", file=sys.stderr)
+        print("注意：SECRET_KEY 变了以后，已入库的云凭证将无法解密，需要重新 /bind。",
+              file=sys.stderr)
+        return 0
+
+    path = Path(target)
+    if not path.exists():
+        print(f"✗ 找不到配置文件：{path}", file=sys.stderr)
+        print("  先 `cp .env.example .env` 再执行本命令。", file=sys.stderr)
+        return 2
+
+    old = _read_secret_key(path)
+    if old and old != key:
+        # 换密钥会让库里已有的凭证解不开 —— 这是最容易被忽略的一次性破坏，必须先提醒
+        database_path = _database_path_from_env(path)
+        if database_path and database_path.exists() and database_path.stat().st_size:
+            print(f"⚠ {database_path} 已存在：换掉 SECRET_KEY 后，里面的云凭证将无法解密，",
+                  file=sys.stderr)
+            print("  需要重新 /bind。（想保留旧库就别改密钥，或先备份。)",
+                  file=sys.stderr)
+    _write_secret_key(path, key)
+    print(f"✓ 已写入 {path}：SECRET_KEY={key[:6]}…{key[-4:]}（{len(key)} 字符）")
+    print("  下一条：python main.py --check 校验配置。")
     return 0
+
+
+def _read_secret_key(path: Path) -> str:
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if line.strip().startswith("SECRET_KEY="):
+            return line.split("=", 1)[1].strip()
+    return ""
+
+
+def _write_secret_key(path: Path, key: str) -> None:
+    """就地替换 SECRET_KEY 行；没有就追加。保留其它内容与注释不动。"""
+    lines = path.read_text(encoding="utf-8").splitlines()
+    for index, line in enumerate(lines):
+        if line.strip().startswith("SECRET_KEY="):
+            lines[index] = f"SECRET_KEY={key}"
+            break
+    else:
+        if lines and lines[-1].strip():
+            lines.append("")
+        lines.append("SECRET_KEY=" + key)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _database_path_from_env(path: Path) -> Optional[Path]:
+    """从 .env 里读出 DATABASE_PATH，用于"改密钥会不会废掉旧库"的判断。"""
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped.startswith("DATABASE_PATH="):
+            value = stripped.split("=", 1)[1].strip().strip('"').strip("'")
+            if value:
+                return Path(value)
+    return None
 
 
 def cmd_doctor(args, settings: Settings) -> int:
@@ -230,7 +292,10 @@ def build_parser() -> argparse.ArgumentParser:
                         version=f"{__project__} {__version__}")
     sub = parser.add_subparsers(dest="command", metavar="<命令>")
 
-    sub.add_parser("gen-secret", help="生成 SECRET_KEY").set_defaults(func=cmd_gen_secret)
+    secret = sub.add_parser("gen-secret", help="生成 SECRET_KEY")
+    secret.add_argument("-w", "--write", nargs="?", const="", default=None, metavar="文件",
+                        help="直接把密钥写入配置文件（默认取 -e 指定的文件），而不是只打印")
+    secret.set_defaults(func=cmd_gen_secret)
 
     doctor = sub.add_parser("doctor", help="体检：配置 / 数据库 / 云凭证")
     doctor.add_argument("--check-cloud", action="store_true",

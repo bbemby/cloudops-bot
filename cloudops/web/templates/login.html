@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="{{language}}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{title}}</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <div class="login-wrap">
+    <form class="login-card" method="post" action="/login">
+      <h1>{{heading}}</h1>
+      <p class="sub">{{title}} · CloudOps Bot v{{version}}</p>
+      {{error_block}}
+      <label for="password">{{password_label}}</label>
+      <input id="password" name="password" type="password" autocomplete="current-password"
+             autofocus required>
+      <p></p>
+      <button class="primary" type="submit">{{submit_label}}</button>
+      <p class="foot mono">{{footer}}</p>
+    </form>
+  </div>
+</body>
+</html>

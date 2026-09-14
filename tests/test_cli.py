@@ -151,6 +151,54 @@ class ManageEntryTest(CliTestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(is_fernet_key(result.stdout.strip().splitlines()[0]))
 
+    def test_gen_secret_writes_into_env_file(self) -> None:
+        """``-w`` 直接改文件：只替换 SECRET_KEY 那一行，其它内容与注释原样保留。"""
+        env_file = self.data_dir / ".env"
+        env_file.write_text(
+            "# 注释要留着\nTELEGRAM_BOT_TOKEN=123456:TEST\nSECRET_KEY=\nDATABASE_PATH=data/cloudops.db\n",
+            encoding="utf-8")
+        result = self.run_cli("manage.py", "-e", str(env_file), "gen-secret", "-w")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        text = env_file.read_text(encoding="utf-8")
+        self.assertIn("# 注释要留着", text)
+        self.assertIn("TELEGRAM_BOT_TOKEN=123456:TEST", text)
+        self.assertIn("DATABASE_PATH=data/cloudops.db", text)
+        written = [line for line in text.splitlines() if line.startswith("SECRET_KEY=")]
+        self.assertEqual(len(written), 1)
+        self.assertTrue(is_fernet_key(written[0].split("=", 1)[1]))
+
+    def test_gen_secret_appends_when_key_missing(self) -> None:
+        env_file = self.data_dir / ".env"
+        env_file.write_text("TELEGRAM_BOT_TOKEN=123456:TEST\n", encoding="utf-8")
+        self.assertEqual(self.run_cli("manage.py", "-e", str(env_file), "gen-secret", "-w")
+                         .returncode, 0)
+        self.assertIn("SECRET_KEY=", env_file.read_text(encoding="utf-8"))
+
+    def test_gen_secret_warns_before_breaking_existing_database(self) -> None:
+        """换密钥会废掉库里已加密的凭证 —— 必须先把这句提醒打出来。"""
+        env_file = self.data_dir / ".env"
+        env_file.write_text(
+            f"SECRET_KEY={generate_key()}\nDATABASE_PATH={self.data_dir / 'cloudops.db'}\n",
+            encoding="utf-8")
+        (self.data_dir / "cloudops.db").write_bytes(b"SQLite format 3\x00" + b"\x00" * 4096)
+        result = self.run_cli("manage.py", "-e", str(env_file), "gen-secret", "-w")
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("无法解密", result.stderr)
+
+    def test_gen_secret_write_without_env_file_is_reported(self) -> None:
+        result = self.run_cli("manage.py", "-e", str(self.data_dir / "nope.env"),
+                              "gen-secret", "-w")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("找不到配置文件", result.stderr)
+
+    def test_gen_secret_without_write_only_prints(self) -> None:
+        """不加 -w 不该碰任何文件（老行为保持不变）。"""
+        env_file = self.data_dir / ".env"
+        env_file.write_text("SECRET_KEY=\n", encoding="utf-8")
+        result = self.run_cli("manage.py", "-e", str(env_file), "gen-secret")
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(env_file.read_text(encoding="utf-8"), "SECRET_KEY=\n")
+
     def test_init_db_creates_tables(self) -> None:
         result = self.run_cli("manage.py", "-e", "/dev/null", "init-db", env=self.good_env())
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

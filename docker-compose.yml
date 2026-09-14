@@ -9,6 +9,13 @@
 #   docker compose pull && docker compose up -d                 # 用 CI 构建好的 GHCR 镜像
 #   docker compose up -d --build                                # 本地构建
 #
+# 管理面板：
+#   容器内监听 9878，下面把宿主机 9878 映射进去（改宿主机端口用 WEB_PANEL_PORT）。
+#   * 默认对 0.0.0.0 开放 —— 面板能改凭证、能销毁机器，公网暴露前请务必
+#     在 .env 里设强 WEB_ADMIN_PASSWORD，或用防火墙/反向代理限制来源；
+#     只给本机反代用时把下面改成 "127.0.0.1:9878:9878"。
+#   * 不需要面板时在 .env 里设 WEB_ENABLED=false，并删掉这段端口映射。
+#
 # 注意事项：
 #   * 同一个 Bot Token 只允许一个消费者，因此这里不设 replicas；
 #   * data/ 目录以卷的方式挂出来，删除容器不会丢数据库；
@@ -32,10 +39,13 @@ services:
       # 容器内固定路径，避免依赖 .env 里的相对路径
       DATABASE_PATH: /app/data/cloudops.db
       MOCK_STATE_PATH: /app/data/mock-cloud.json
+    ports:
+      # Web 管理面板：宿主机端口可用 WEB_PANEL_PORT 覆盖（如 WEB_PANEL_PORT=8080）
+      - "${WEB_PANEL_PORT:-9878}:9878"
     volumes:
       # 注意属主：容器内是 uid 10001，宿主机目录需要 chown 10001:10001
       - ./data:/app/data
-    # 只需要出网访问 Telegram 与云厂商 API，不需要对外暴露端口
+    # 只需要出网访问 Telegram、云厂商 API 与面板端口
     security_opt:
       - no-new-privileges:true
     logging:

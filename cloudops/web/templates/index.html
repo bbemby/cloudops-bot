@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="{{language}}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{csrf}}">
+  <title>{{title}}</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <strong>{{title}}</strong>
+        <span class="mono">CloudOps Bot v{{version}}</span>
+      </div>
+      <nav class="nav" id="nav">
+        <button type="button" class="active" data-view="overview" data-i18n="web.nav.overview"></button>
+        <button type="button" data-view="instances" data-i18n="web.nav.instances"></button>
+        <button type="button" data-view="credentials" data-i18n="web.nav.credentials"></button>
+        <button type="button" data-view="users" data-i18n="web.nav.users"></button>
+        <button type="button" data-view="audit" data-i18n="web.nav.audit"></button>
+        <button type="button" data-view="tasks" data-i18n="web.nav.tasks"></button>
+      </nav>
+    </aside>
+
+    <div class="main">
+      <header class="topbar">
+        <div class="left">
+          <span class="badge mono" id="acting-user"></span>
+          <span class="badge warn" id="readonly-badge" hidden data-i18n="web.readonly.notice"></span>
+        </div>
+        <form method="post" action="/logout">
+          <input type="hidden" name="csrf_token" value="{{csrf}}">
+          <button class="ghost small" type="submit" data-i18n="web.logout"></button>
+        </form>
+      </header>
+
+      <main class="content">
+        <section class="pane active" id="pane-overview">
+          <h2 class="section" data-i18n="web.nav.overview"></h2>
+          <p class="hint" id="overview-hint"></p>
+          <div id="overview-errors"></div>
+          <div class="cards" id="overview-cards"></div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th data-i18n="web.instances.provider"></th>
+                  <th data-i18n="web.credentials.title"></th>
+                  <th data-i18n="web.credentials.active"></th>
+                </tr>
+              </thead>
+              <tbody id="overview-providers"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="pane" id="pane-instances">
+          <h2 class="section" data-i18n="web.instances.title"></h2>
+          <p class="hint" id="instances-hint"></p>
+          <div class="toolbar">
+            <label class="mono" for="instance-provider" data-i18n="web.instances.provider"></label>
+            <select id="instance-provider"></select>
+            <button type="button" class="small" id="instances-refresh" data-i18n="web.instances.refresh"></button>
+            <span class="grow"></span>
+          </div>
+          <div id="instances-errors"></div>
+          <div class="chips" id="instances-chips"></div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th data-i18n="web.instances.provider"></th>
+                  <th data-i18n="web.instances.name"></th>
+                  <th data-i18n="web.instances.status"></th>
+                  <th data-i18n="web.instances.address"></th>
+                  <th data-i18n="web.instances.region"></th>
+                  <th data-i18n="web.instances.size"></th>
+                  <th data-i18n="web.instances.actions"></th>
+                </tr>
+              </thead>
+              <tbody id="instances-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="pane" id="pane-credentials">
+          <h2 class="section" data-i18n="web.credentials.title"></h2>
+          <p class="hint" id="credentials-hint"></p>
+          <div class="form-panel">
+            <h3 data-i18n="web.credentials.add"></h3>
+            <div class="field-grid">
+              <div class="field required">
+                <label for="cred-provider" data-i18n="web.credentials.provider"></label>
+                <select id="cred-provider"></select>
+              </div>
+              <div class="field required">
+                <label for="cred-label" data-i18n="web.credentials.label"></label>
+                <input id="cred-label" type="text" value="default" maxlength="32">
+              </div>
+            </div>
+            <div class="field-grid" id="cred-fields"></div>
+            <button type="button" class="primary small" id="cred-submit" data-i18n="web.credentials.add"></button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th data-i18n="web.credentials.provider"></th>
+                  <th data-i18n="web.credentials.label"></th>
+                  <th data-i18n="web.credentials.identity"></th>
+                  <th data-i18n="web.credentials.fields"></th>
+                  <th data-i18n="web.credentials.owner"></th>
+                  <th data-i18n="web.credentials.source"></th>
+                  <th data-i18n="web.credentials.active"></th>
+                  <th data-i18n="web.instances.actions"></th>
+                </tr>
+              </thead>
+              <tbody id="credentials-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="pane" id="pane-users">
+          <h2 class="section" data-i18n="web.users.title"></h2>
+          <p class="hint" id="users-hint"></p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th data-i18n="web.users.id"></th>
+                  <th>username</th>
+                  <th data-i18n="web.users.role"></th>
+                  <th data-i18n="web.audit.time"></th>
+                </tr>
+              </thead>
+              <tbody id="users-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="pane" id="pane-audit">
+          <h2 class="section" data-i18n="web.audit.title"></h2>
+          <p class="hint" id="audit-hint"></p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th data-i18n="web.audit.time"></th>
+                  <th data-i18n="web.audit.action"></th>
+                  <th data-i18n="web.audit.status"></th>
+                  <th data-i18n="web.instances.provider"></th>
+                  <th data-i18n="web.audit.target"></th>
+                  <th data-i18n="web.audit.detail"></th>
+                </tr>
+              </thead>
+              <tbody id="audit-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="pane" id="pane-tasks">
+          <h2 class="section" data-i18n="web.tasks.title"></h2>
+          <p class="hint" id="tasks-hint"></p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th data-i18n="web.users.id"></th>
+                  <th data-i18n="web.tasks.kind"></th>
+                  <th data-i18n="web.tasks.status"></th>
+                  <th data-i18n="web.instances.provider"></th>
+                  <th data-i18n="web.audit.detail"></th>
+                  <th data-i18n="web.audit.time"></th>
+                </tr>
+              </thead>
+              <tbody id="tasks-body"></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <div class="toast-host" id="toasts"></div>
+
+  <dialog id="confirm-dialog">
+    <h3 id="confirm-title"></h3>
+    <p id="confirm-text"></p>
+    <input id="confirm-input" type="text" autocomplete="off">
+    <div class="actions">
+      <button type="button" class="ghost" id="confirm-cancel"></button>
+      <button type="button" class="danger" id="confirm-ok"></button>
+    </div>
+  </dialog>
+
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

@@ -71,6 +71,9 @@ jobs:
           DEFAULT_PROVIDER=mock
           TELEGRAM_API_BASE=http://127.0.0.1:8099
           TELEGRAM_RETRIES=0
+          # 面板：CI 专用口令，断言⑤ 会用它登录（真实部署请换成强口令）
+          WEB_ENABLED=true
+          WEB_ADMIN_PASSWORD=ci-panel-password
           EOF
           mkdir -p data
           sudo chown -R 10001:10001 data     # 容器内以 uid 10001 运行（见 Dockerfile）
@@ -82,6 +85,8 @@ jobs:
           $COMPOSE config -q
           $COMPOSE config --images
           $COMPOSE config --services
+          # 面板端口映射必须真的在编排结果里（EXPOSE 是文档，ports 才是通道）
+          $COMPOSE config | grep -q '9878'
 
       - name: 启动 Telegram API 桩
         run: |
@@ -129,10 +134,51 @@ jobs:
           ! grep -q 'Traceback' /tmp/compose.log
           ! grep -q 'Unclosed client session' /tmp/compose.log
 
-      - name: 断言④ 镜像自带的健康检查在容器内通过
-        run: docker exec cloudops-bot python deploy/healthcheck.py
+      - name: 断言④ 镜像自带的健康检查在容器内通过（库里 + 面板 /healthz 都探）
+        run: |
+          docker exec cloudops-bot python deploy/healthcheck.py
+          # 关掉面板时健康检查就不该再探端口：确认这条分支真的按 WEB_ENABLED 走
+          docker exec -e WEB_ENABLED=false cloudops-bot python deploy/healthcheck.py
 
-      - name: 断言⑤ docker stop 走优雅退出（不是超时被杀）
+      - name: 断言⑤ 管理面板在容器里可用（端口映射 / 登录 / CSRF / 脱敏）
+        run: |
+          set -x
+          base=http://127.0.0.1:9878
+
+          # a) 存活探针公开可访问
+          curl -fsS "$base/healthz" | tee /tmp/health.json
+          grep -q '"status": "ok"' /tmp/health.json
+
+          # b) 未登录碰受保护接口 → 401（不是 500，也不是放行）
+          test "$(curl -s -o /dev/null -w '%{http_code}' "$base/api/overview")" = "401"
+
+          # c) 静态资源白名单内的文件可取
+          test "$(curl -s -o /dev/null -w '%{http_code}' "$base/static/app.js")" = "200"
+
+          # d) 用 .env 里的口令登录，拿到加固过的会话 cookie
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+                   -d 'password=ci-panel-password' "$base/login")" = "303"
+          curl -s -c /tmp/jar.txt -o /dev/null -X POST \
+            -d 'password=ci-panel-password' "$base/login"
+          grep -q cloudops_session /tmp/jar.txt
+          grep -q HttpOnly /tmp/jar.txt
+
+          # e) 登录后能读到概览
+          curl -fsS -b /tmp/jar.txt "$base/api/overview" | tee /tmp/overview.json
+          grep -q '"users"' /tmp/overview.json
+
+          # f) 面板绝不回显明文密钥（CI 上面绑过 mock 凭证，token 是 smoke-token-123）
+          curl -fsS -b /tmp/jar.txt "$base/api/credentials" | tee /tmp/panel-creds.json
+          ! grep -q 'smoke-token-123' /tmp/panel-creds.json
+          ! grep -q 'smoke-token-123' /tmp/overview.json
+
+          # g) 缺 CSRF token 的写操作必须被拒
+          test "$(curl -s -o /dev/null -w '%{http_code}' -b /tmp/jar.txt \
+                   -X POST -H 'Content-Type: application/json' -d '{}' \
+                   "$base/api/credentials")" = "403"
+          set +x
+
+      - name: 断言⑥ docker stop 走优雅退出（不是超时被杀）
         run: |
           start=$(date +%s)
           docker stop -t 10 cloudops-bot
@@ -142,7 +188,7 @@ jobs:
           test "$code" = "0"        # 0 = 自己收尾后退出，137 = 被 SIGKILL
           test "$elapsed" -lt 6     # 真优雅退出是毫秒级，卡到 10s 说明没处理 SIGTERM
 
-      - name: 断言⑥ 数据落在卷里（重启后凭证仍在）
+      - name: 断言⑦ 数据落在卷里（重启后凭证仍在）
         run: |
           docker run --rm --env-file .env -v "$PWD/data:/app/data" \
             -e DATABASE_PATH=/app/data/cloudops.db \
@@ -150,7 +196,7 @@ jobs:
             | tee /tmp/creds.txt
           grep -q 'mock' /tmp/creds.txt
 
-      - name: 断言⑦ 换了 SECRET_KEY 就 fail fast（而不是跑起来之后才报解密失败）
+      - name: 断言⑧ 换了 SECRET_KEY 就 fail fast（而不是跑起来之后才报解密失败）
         run: |
           other="$(python3 -c 'import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).decode())')"
           set +e
